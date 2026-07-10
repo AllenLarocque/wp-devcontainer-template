@@ -1,0 +1,124 @@
+# Base WordPress dev stack (plain WordPress; profiles overlay on top).
+#
+# - dev:       the devcontainer Claude Code runs in (see .devcontainer/).
+# - wordpress: stock Apache/PHP 8.3 WordPress image (no custom build).
+# - db:        MariaDB 10.11, single `wordpress` database.
+# - adminer:   lightweight DB UI.
+# - mailpit:   local mail catcher for WordPress mail testing.
+#
+# The webroot (./wordpress) is bind-mounted into BOTH dev and wordpress so
+# Claude edits the same files Apache serves. Per-site values come from .env.
+#
+# A profile (e.g. civicrm) is applied via docker-compose.override.yml, which
+# `bin/use-profile.sh` writes from profiles/<name>/overlay.yml. `docker compose`
+# auto-merges that override; the devcontainer lists it explicitly.
+
+services:
+  dev:
+    build:
+      context: .devcontainer
+      dockerfile: Dockerfile
+      args:
+        TZ: "${TZ:-America/Vancouver}"
+        CLAUDE_CODE_VERSION: latest
+        # Profiles switch these on (e.g. civicrm needs cv + extra PHP extensions).
+        INSTALL_CV: "${INSTALL_CV:-false}"
+        EXTRA_PHP_EXTS: "${EXTRA_PHP_EXTS:-}"
+    cap_add: ["NET_ADMIN", "NET_RAW"]
+    volumes:
+      - .:/workspace:cached
+      - ./wordpress:/var/www/html:cached
+    environment:
+      WORDPRESS_DB_HOST: db
+      WORDPRESS_DB_NAME: wordpress
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: wordpress
+      WP_URL: "${WP_URL:-http://localhost:8090}"
+      WP_TITLE: "${WP_TITLE:-WordPress Dev}"
+      WP_ADMIN_USER: "${WP_ADMIN_USER:-admin}"
+      WP_ADMIN_PASS: "${WP_ADMIN_PASS:-admin}"
+      WP_ADMIN_EMAIL: "${WP_ADMIN_EMAIL:-admin@example.com}"
+    command: sleep infinity
+    depends_on: [db]
+    networks: [app]
+
+  wordpress:
+    image: wordpress:php8.3-apache
+    depends_on: [db]
+    volumes:
+      - ./wordpress:/var/www/html
+      - ./config/php.ini:/usr/local/etc/php/conf.d/zz-custom.ini:ro
+    # The stock entrypoint only populates the webroot (WP core + wp-config.php)
+    # when argv[1] matches "apache2*" (or is invoked as docker-ensure-installed.sh);
+    # our overridden command isn't apache2-foreground directly, so we call that
+    # helper explicitly first. Then, once the webroot is populated (owned
+    # www-data:www-data), re-own it to node (uid 1000) with the www-data group
+    # (gid 33) and make it group-writable + setgid so wp-cli in `dev` (uid 1000)
+    # can write, Apache (gid 33) can still serve/upload, and new files stay in
+    # the shared group. A marker file makes the (potentially slow) chown/find
+    # pass a one-time cost.
+    command:
+      - bash
+      - -c
+      - |
+        set -e
+        docker-ensure-installed.sh
+        if [ ! -f /var/www/html/.perms-initialized ]; then
+          echo "Fixing webroot ownership for shared dev/apache access..."
+          chown -R 1000:33 /var/www/html
+          find /var/www/html -type d -exec chmod 2775 {} +
+          find /var/www/html -type f -exec chmod 0664 {} +
+          touch /var/www/html/.perms-initialized
+        fi
+        exec apache2-foreground
+    environment:
+      WORDPRESS_DB_HOST: db
+      WORDPRESS_DB_NAME: wordpress
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: wordpress
+      WORDPRESS_DEBUG: "1"
+    ports:
+      - "${WEB_PORT:-8090}:80"
+    restart: unless-stopped
+    networks: [app]
+
+  db:
+    image: mariadb:10.11
+    command: >
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./db-seed:/docker-entrypoint-initdb.d-seed:ro
+    environment:
+      MARIADB_ROOT_PASSWORD: rootpassword
+      MARIADB_DATABASE: wordpress
+      MARIADB_USER: wordpress
+      MARIADB_PASSWORD: wordpress
+    ports:
+      - "${DB_PORT:-13307}:3306"
+    restart: unless-stopped
+    networks: [app]
+
+  adminer:
+    image: adminer:latest
+    depends_on: [db]
+    ports:
+      - "${ADMINER_PORT:-8091}:8080"
+    networks: [app]
+
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "${MAILPIT_PORT:-8035}:8025"
+    restart: unless-stopped
+    networks: [app]
+
+volumes:
+  db_data:
+    name: ${PROJECT_NAME:-wpsite}-db-data
+
+networks:
+  app:
+    name: ${PROJECT_NAME:-wpsite}-network
+    driver: bridge

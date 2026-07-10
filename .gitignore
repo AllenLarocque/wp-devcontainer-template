@@ -1,0 +1,21 @@
+# Webroot content is NOT tracked — WP core, installed plugins/themes, uploads.
+wordpress/*
+!wordpress/README.md
+!wordpress/.gitkeep
+
+# Database seed dumps.
+db-seed/*
+!db-seed/README.md
+!db-seed/.gitkeep
+
+# Secrets / local env
+.env
+
+# Per-site runtime state written by bin/use-profile.sh.
+active-firewall-allowlist.txt
+
+# OS + Windows artifacts (WSL2 copies)
+.DS_Store
+desktop.ini
+*:Zone.Identifier
+php_errors.log

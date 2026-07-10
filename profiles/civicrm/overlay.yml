@@ -1,0 +1,24 @@
+# CiviCRM profile overlay (applied to docker-compose.override.yml by
+# bin/use-profile.sh civicrm). It:
+#   - adds cv + CiviCRM PHP extensions to the dev image (build args),
+#   - swaps the stock web image for a CiviCRM-extension build (tagged distinctly
+#     so it never shadows the official wordpress:php8.3-apache tag),
+#   - adds the second `civicrm` database via an init script.
+# The base wordpress `command:` (webroot perms fix) and the dev DB env are
+# inherited unchanged.
+services:
+  dev:
+    build:
+      args:
+        INSTALL_CV: "true"
+        EXTRA_PHP_EXTS: "php8.3-intl php8.3-soap php8.3-bcmath php8.3-imagick php8.3-gettext"
+
+  wordpress:
+    image: "${PROJECT_NAME:-wpsite}-civicrm-web"
+    build:
+      context: ./profiles/civicrm
+      dockerfile: Dockerfile.web
+
+  db:
+    volumes:
+      - ./profiles/civicrm/init-databases.sql:/docker-entrypoint-initdb.d/00-init-databases.sql:ro

@@ -1,0 +1,8 @@
+# Extra egress hosts CiviCRM + Composer need (added to the base allowlist).
+download.civicrm.org
+latest.civicrm.org
+lab.civicrm.org
+getcomposer.org
+repo.packagist.org
+packagist.org
+api.stripe.com

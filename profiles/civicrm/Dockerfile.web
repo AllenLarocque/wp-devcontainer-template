@@ -1,0 +1,29 @@
+# CiviCRM web image: stock WordPress + the PHP extensions CiviCRM needs, plus
+# wp-cli and cv. Built by the civicrm profile; tagged distinctly via the
+# overlay's `image:` so it never overwrites the official wordpress tag.
+#
+# imap is intentionally omitted (dropped from Debian 13 / PHP 8.4; CiviCRM core
+# doesn't need it — only inbound email-account processing does).
+FROM wordpress:php8.3-apache
+
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+      libicu-dev libxml2-dev libzip-dev libpng-dev libjpeg-dev libfreetype6-dev \
+      libgettextpo-dev \
+      less default-mysql-client; \
+    docker-php-ext-configure gd --with-freetype --with-jpeg; \
+    docker-php-ext-install -j"$(nproc)" \
+      intl soap bcmath gd zip exif gettext mysqli pdo_mysql opcache; \
+    apt-get clean; rm -rf /var/lib/apt/lists/*
+
+# CiviCRM-tuned PHP (memory etc.) alongside the base config/php.ini.
+COPY php-civicrm.ini /usr/local/etc/php/conf.d/zz-civicrm.ini
+
+# wp-cli + cv inside the web container too (cron/scheduled CiviCRM jobs).
+RUN curl -fsSL https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar -o /usr/local/bin/wp \
+      && chmod +x /usr/local/bin/wp \
+      && curl -fsSL https://download.civicrm.org/cv/cv.phar -o /usr/local/bin/cv \
+      && chmod +x /usr/local/bin/cv
+
+RUN a2enmod rewrite
