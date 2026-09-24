@@ -6,7 +6,7 @@
 # Profiles add extras at build time via ARGs (no second Dockerfile): the civicrm
 # profile sets EXTRA_PHP_EXTS (CiviCRM's PHP extensions) and INSTALL_CV=true
 # (the `cv` CLI). Plain WordPress leaves both at their inert defaults.
-FROM node:20-bookworm
+FROM node:22-bookworm
 
 ARG TZ
 ENV TZ="$TZ"
